@@ -12,7 +12,7 @@ module.exports = withPWA({
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   turbopack: {},
-  staticPageGenerationTimeout: 180,
+  staticPageGenerationTimeout: 60,
 
   async redirects() {
     return [
