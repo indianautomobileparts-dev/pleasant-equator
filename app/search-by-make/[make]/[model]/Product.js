@@ -1,0 +1,212 @@
+"use client"
+import { Fira_Sans } from 'next/font/google';
+import Image from 'next/image';
+import Link from 'next/link';
+import React, { useMemo, useState } from 'react'
+
+const firaSans = Fira_Sans({
+    weight: ['400', '700'],
+    subsets: ['latin'],
+    display: 'swap',
+    variable: '--font-fira-sans',
+});
+
+export default function Product({ make, model, products, allProducts }) {
+    const visibleProducts = products.filter(product =>
+        product.compatibility.some(
+            c =>
+                c.make.toLowerCase() === make.toLowerCase() && c.model.toLowerCase() === model.toLowerCase()
+        )
+    );
+
+    const filteredProducts = allProducts.filter(product =>
+        product.compatibility.some(
+            c =>
+                c.make.toLowerCase() === make.toLowerCase() && c.model.toLowerCase() === model.toLowerCase()
+        )
+    );
+
+    const modelYears = useMemo(() => {
+        const yearsSet = new Set();
+
+        products.forEach(product => {
+            product.compatibility?.forEach(compat => {
+                if (
+                    compat.make?.toLowerCase() === make.toLowerCase() &&
+                    compat.model?.toLowerCase() === model.toLowerCase() &&
+                    compat.years
+                ) {
+                    const yearString = compat.years.toString();
+
+                    if (yearString.includes(',')) {
+                        yearString.split(',').forEach(y => {
+                            const year = y.trim();
+                            if (year) yearsSet.add(year);
+                        });
+                    }
+                    else if (yearString.includes('-')) {
+                        const [start, end] = yearString.split('-').map(y => parseInt(y.trim()));
+                        for (let year = start; year <= end; year++) {
+                            yearsSet.add(year.toString());
+                        }
+                    }
+                    else {
+                        yearsSet.add(yearString.trim());
+                    }
+                }
+            });
+        });
+
+        return Array.from(yearsSet).sort((a, b) => parseInt(b) - parseInt(a));
+    }, [products, make, model]);
+
+    const yearRange = useMemo(() => {
+        if (modelYears.length === 0) return '';
+        if (modelYears.length === 1) return modelYears[0];
+
+        const sorted = [...modelYears].sort((a, b) => parseInt(a) - parseInt(b));
+        return `${sorted[0]}-${sorted[sorted.length - 1]}`;
+    }, [modelYears]);
+
+    const getProductCompatibility = (product) => {
+        const modelYearsMap = {};
+
+        product.compatibility?.forEach(compat => {
+            if (compat.make?.toLowerCase() === make.toLowerCase() && compat.model && compat.years) {
+                const model = compat.model;
+                const yearString = compat.years.toString();
+
+                if (!modelYearsMap[model]) {
+                    modelYearsMap[model] = new Set();
+                }
+
+                if (yearString.includes(',')) {
+                    yearString.split(',').forEach(y => {
+                        const year = y.trim();
+                        if (year) modelYearsMap[model].add(year);
+                    });
+                }
+                else if (yearString.includes('-')) {
+                    const [start, end] = yearString.split('-').map(y => parseInt(y.trim()));
+                    for (let year = start; year <= end; year++) {
+                        modelYearsMap[model].add(year.toString());
+                    }
+                }
+                else {
+                    modelYearsMap[model].add(yearString.trim());
+                }
+            }
+        });
+
+        const compatibilityStrings = Object.entries(modelYearsMap).map(([model, yearsSet]) => {
+            const years = Array.from(yearsSet).sort((a, b) => parseInt(a) - parseInt(b));
+
+            if (years.length === 0) return model;
+            if (years.length === 1) return `${model} (${years[0]})`;
+
+            return `${model} (${years[0]}-${years[years.length - 1]})`;
+        });
+
+        return compatibilityStrings.join(', ');
+    };
+
+    return (
+        <div> {/* Results Grid */}
+            <section className="mt-20 xs:mt-5 xxs:mt-5 sm:mt-7 mx-5 xs:mx-3 sm:mx-3 xxs:mx-3">
+                <h2 className="text-2xl font-bold mb-4">{make} {model} Parts</h2>
+                <p>{visibleProducts.length} Results</p>
+                <ul className="grid grid-cols-5 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 xxl:grid-cols-5 xxs:grid-cols-2 xs:grid-cols-2 xs:gap-2 s:gap-2 xxs:gap-2 md:gap-2 s:grid-cols-2 sm:grid-cols-2 sm:gap-2 gap-6 xl:gap-3 xxl:gap-3 lg:gap-3">
+                    {visibleProducts.length > 0 ? (
+                        visibleProducts.map(product => {
+                            // === 3-DAY ROTATION LOGIC ===
+                            const compatList = product.compatibility.filter(
+                                c => c.make.toLowerCase() === make.toLowerCase()
+                            );
+
+                            let compat = null;
+
+                            if (compatList.length > 0) {
+                                const now = new Date();
+                                const days = Math.floor(now.getTime() / (1000 * 60 * 60 * 24));
+                                const rotationPeriod = Math.floor(days / 3);
+                                const index = (rotationPeriod + product.id) % compatList.length;
+                                compat = compatList[index];
+                            }
+                            const compatibilityString = getProductCompatibility(product);
+
+                            const slug = `${product.partname}-${make}-${compat?.model || ""}${compat?.years ? `-${compat.years}` : ""}-${product.partnumber}-${product.id}`;
+
+                            return (
+                                <li
+                                    key={product.id}
+                                    className="flex flex-col border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                                    itemScope
+                                    itemType="https://schema.org/Product"
+                                >
+                                    <Link
+                                        href={`/search-by-make/${make}/${compat?.model || ""}/${product.category}/${product.subcategory}/${encodeURIComponent(slug)}`}
+                                        className="flex flex-col h-full"
+                                        target="_blank"
+                                        title={`${make} ${compat?.model || ""} ${compat?.years || ""} ${product.partname}`}
+                                        rel="noopener noreferrer"
+                                    >
+                                        <figure className="relative w-full aspect-square bg-white">
+                                            <Image
+                                                src={product.image}
+                                                alt={product.partname}
+                                                fill
+                                                className="object-contain"
+                                                itemProp="image"
+                                            />
+                                        </figure>
+
+                                        <figcaption className="p-3">
+                                            <h2 className="font-semibold line-clamp-3" itemProp="name">
+                                                {product.partname} for {make} {compat?.model || ""} {compat?.years || ""}
+                                            </h2>
+                                            <p className={`text-sm font-bold text-blue-600 ${firaSans.className}`}>
+                                                {product.pricing.price > 1
+                                                    ? `${product.pricing.currency} ${product.pricing.price.toLocaleString()}`
+                                                    : "Price on Request"
+                                                }
+                                                <span className='text-sm font-thin text-blue-500'>approx.</span></p>
+                                            <p className="text-sm text-gray-600">
+                                                Compatibility: <br /><span itemProp="compatibility">
+                                                    {compatibilityString || `${make} ${model}`}
+                                                </span>
+                                            </p>
+                                            <p className="text-sm text-gray-600">
+                                                Part #: <span itemProp="mpn">{product.partnumber}</span>
+                                            </p>
+
+                                            <meta itemProp="brand" content={product.brand} />
+                                            <meta itemProp="category" content={product.category} />
+                                            <meta
+                                                itemProp="description"
+                                                content={`${product.partname} compatible with ${make} ${compat?.model || ""} ${compat?.years || ""}`}
+                                            />
+                                        </figcaption>
+                                    </Link>
+
+                                    {product.pricing?.price && (
+                                        <div itemProp="offers" itemScope itemType="https://schema.org/Offer" >
+                                            <meta itemProp="priceCurrency" content={product.pricing.currency} />
+                                            <meta itemProp="price" content={product.pricing.price} />
+                                            <link itemProp="availability" href="https://schema.org/InStock" />
+                                            <meta itemProp="sku" content={product.sku || product.partnumber} />
+                                        </div>
+                                    )}
+                                </li>
+                            );
+                        })
+                    ) : (
+                        <p className="col-span-full text-center text-gray-600">
+                            No {make} products found for "{localQuery}"
+                        </p>
+                    )}
+                </ul>
+
+            </section>
+        </div>
+    )
+}

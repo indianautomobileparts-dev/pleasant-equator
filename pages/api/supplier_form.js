@@ -1,0 +1,108 @@
+import { google } from 'googleapis';
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const sheets = google.sheets('v4');
+
+async function handler(req, res) {
+    if (req.method !== 'POST') {
+        res.setHeader('X-Robots-Tag', 'noindex');
+
+        return res.status(405).json({ message: 'Method not allowed' });
+    }
+
+    try {
+        const scopes = ['https://www.googleapis.com/auth/spreadsheets'];
+
+        const jwt = new google.auth.JWT(
+            process.env.EMIRATES_CAR_CLIENT_EMAIL,
+            null,
+            process.env.EMIRATES_CAR_FORMS_PRIVATE_KEY.replace(/\\n/g, '\n'),
+            scopes
+        );
+
+        // Read rows for RefNo
+        const readData = await sheets.spreadsheets.values.get({
+            auth: jwt,
+            spreadsheetId: process.env.EMIRATES_CAR_DATABASE_ID,
+            range: 'supplier-sheets',
+        });
+
+        const today = new Date();
+        const year = today.getFullYear().toString().substring(2);
+        const RefNo = `SUP${year}000${readData.data.values.length + 1}`;
+
+        const {
+            Timestamp,
+            supplierType,
+            businessName,
+            whatsapp,
+            country,
+            email,
+            partsType,
+            partsCondition,
+            makes,
+        } = req.body;
+
+
+        const description =
+            'Ref: ' + RefNo + '\n' +
+            'Business Name: ' + businessName + '\n' +
+            'Supplier Type: ' + supplierType + '\n' +
+            'WhatsApp: ' + whatsapp + '\n' +
+            'Country: ' + country + '\n' +
+            'Email: ' + email + '\n' +
+            'Parts Type: ' + partsType + '\n' +
+            'Condition: ' + partsCondition + '\n' +
+            'Makes Supplied: ' + makes;
+
+        // Append to Sheet
+        const response = await sheets.spreadsheets.values.append({
+            spreadsheetId: process.env.EMIRATES_CAR_DATABASE_ID,
+            range: 'supplier-sheets',
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            auth: jwt,
+            requestBody: {
+                values: [
+                    [
+                        Timestamp,
+                        RefNo,
+                        email,
+                        whatsapp,
+                        country,
+                        partsType,
+                        partsCondition,
+                        makes,
+                        description,
+                    ],
+                ],
+            },
+        });
+
+        // Optional email notification
+        const transporter = nodemailer.createTransport({
+            service: 'Gmail',
+            auth: {
+                user: 'emiratesautomobileparts@gmail.com',
+                pass: process.env.PASSKEY,
+            },
+        });
+
+        await resend.emails.send({
+            from: 'emiratesautomobileparts@gmail.com',
+            to: 'emiratesautomobileparts@gmail.com',
+            subject: `New Supplier Added – ${country}`,
+            text: description,
+        });
+        res.setHeader('X-Robots-Tag', 'noindex');
+
+        return res.status(201).json({ success: true, ref: RefNo, response });
+    } catch (error) {
+        console.error('Supplier API error:', error);
+        return res.status(500).json({ error: 'Failed to save supplier' });
+    }
+}
+
+export default handler;
